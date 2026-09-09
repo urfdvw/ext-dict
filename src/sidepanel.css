@@ -1,0 +1,454 @@
+:root {
+  --bg: #ffffff;
+  --bg-sunken: #f4f6f9;
+  --bg-raised: #ffffff;
+  --text: #16181d;
+  --text-dim: #646b7a;
+  --line: #e2e6ed;
+  --accent: #1a63d8;
+  --accent-soft: #e8f0ff;
+  --danger: #c0392b;
+  --radius: 10px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1e22;
+    --bg-sunken: #24272c;
+    --bg-raised: #2a2d33;
+    --text: #e6e8ec;
+    --text-dim: #9aa2b1;
+    --line: #383c44;
+    --accent: #7fb0ff;
+    --accent-soft: #24334d;
+    --danger: #ff7a6b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Class rules below set `display`, which would otherwise beat the [hidden]
+   attribute the panel toggles elements with. */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- top bar ---------- */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.search {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: var(--bg-sunken);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 0 6px 0 8px;
+}
+
+.search:focus-within {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.search-icon {
+  color: var(--text-dim);
+  flex: none;
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 8px 6px;
+}
+
+.search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.icon-button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--bg-sunken);
+}
+
+.icon-button.subtle {
+  color: var(--text-dim);
+  width: 24px;
+  height: 24px;
+}
+
+.icon-button.subtle svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------- dictionary tabs ---------- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  flex: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab[aria-selected="true"] {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- stage ---------- */
+
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+#viewer {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--bg);
+}
+
+.suggestions {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 3;
+  max-height: 100%;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 12%);
+}
+
+.suggestions li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.suggestions li[aria-selected="true"],
+.suggestions li:hover {
+  background: var(--bg-sunken);
+}
+
+.suggestions .word {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestions .where {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  background: var(--bg);
+  color: var(--text-dim);
+}
+
+.placeholder h1 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.placeholder p {
+  margin: 0;
+  max-width: 34ch;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  background: var(--bg-sunken);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+button.primary {
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+@media (prefers-color-scheme: dark) {
+  button.primary {
+    color: #10131a;
+  }
+}
+
+/* ---------- library ---------- */
+
+.library {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.library-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 8px 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.library-bar h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.library-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  text-align: center;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.dropzone.hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.dropzone strong {
+  color: var(--text);
+}
+
+.imports,
+.dict-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.imports li {
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  font-size: 12px;
+}
+
+.progress {
+  margin-top: 6px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+
+.dict {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+
+.dict.disabled {
+  opacity: 0.55;
+}
+
+.dict-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.dict-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dict-meta {
+  color: var(--text-dim);
+  font-size: 11.5px;
+  margin-top: 2px;
+}
+
+.dict-title {
+  font-style: italic;
+}
+
+.dict-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.link-button {
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.note {
+  color: var(--text-dim);
+  font-size: 11.5px;
+  margin: 14px 0 0;
+}
+
+.error {
+  color: var(--danger);
+}
+
+/* ---------- toast ---------- */
+
+.toast {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 20;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  background: #21242b;
+  color: #f4f6f9;
+  font-size: 12px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 25%);
+}

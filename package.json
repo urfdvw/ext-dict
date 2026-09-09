@@ -1,0 +1,15 @@
+{
+  "name": "mdict-side-panel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chrome extension that looks words up in MDict (.mdx/.mdd) dictionaries from the side panel",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/parser.test.mjs",
+    "test:e2e": "node --test test/extension.test.mjs",
+    "fixtures": "python3 tools/make_test_dict.py test/fixtures"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

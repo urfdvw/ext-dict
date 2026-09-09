@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MDict</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <button id="back" class="icon-button" title="Back" hidden aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+      </button>
+      <div class="search">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="M16 16l4.5 4.5" />
+        </svg>
+        <input
+          id="query"
+          type="search"
+          placeholder="Search the dictionary"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Search word"
+        />
+        <button id="clear" class="icon-button subtle" title="Clear" hidden aria-label="Clear">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
+      <button id="open-library" class="icon-button" title="Dictionaries" aria-label="Dictionaries">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 5.5h6a2 2 0 012 2V19a2.5 2.5 0 00-2-1.4H4zM20 5.5h-6a2 2 0 00-2 2V19a2.5 2.5 0 012-1.4h6z" />
+        </svg>
+      </button>
+    </header>
+
+    <nav id="tabs" class="tabs" hidden></nav>
+
+    <main class="stage">
+      <ul id="suggestions" class="suggestions" hidden></ul>
+
+      <section id="placeholder" class="placeholder">
+        <h1>No dictionary yet</h1>
+        <p>Add an <code>.mdx</code> file — and its <code>.mdd</code> companions, if it has any — to start looking words up.</p>
+        <button id="placeholder-add" class="primary">Add a dictionary</button>
+      </section>
+
+      <iframe
+        id="viewer"
+        src="viewer.html"
+        title="Dictionary entry"
+        referrerpolicy="no-referrer"
+      ></iframe>
+    </main>
+
+    <section id="library" class="library" hidden aria-label="Dictionaries">
+      <header class="library-bar">
+        <h2>Dictionaries</h2>
+        <button id="close-library" class="icon-button" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </header>
+
+      <div class="library-body">
+        <label class="dropzone" id="dropzone">
+          <input id="files" type="file" accept=".mdx,.mdd" multiple hidden />
+          <strong>Add dictionary files</strong>
+          <span>Pick an <code>.mdx</code> file together with any <code>.mdd</code> files that came with it, or drop them here.</span>
+        </label>
+
+        <ul id="imports" class="imports" hidden></ul>
+        <ul id="dict-list" class="dict-list"></ul>
+        <p id="storage-note" class="note"></p>
+      </div>
+    </section>
+
+    <div id="toast" class="toast" hidden role="status"></div>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>
