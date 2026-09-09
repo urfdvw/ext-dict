@@ -75,6 +75,10 @@ async function reloadLibrary() {
   updatePlaceholder();
 }
 
+/**
+ * @param {{title: string, note: string}} [message] what to say instead of the
+ *   idle text, when no entry is on screen
+ */
 function updatePlaceholder(message) {
   const shown = !entry.results.length;
   ui.placeholder.hidden = !shown;
@@ -88,10 +92,12 @@ function updatePlaceholder(message) {
     ui.placeholderAdd.hidden = false;
   } else {
     const words = library.dictionaries.reduce((sum, d) => sum + d.mdx.size, 0);
-    title.textContent = message || 'Ready';
-    text.textContent = `${library.dictionaries.length} ${
-      library.dictionaries.length === 1 ? 'dictionary' : 'dictionaries'
-    }, ${words.toLocaleString()} head words. Type a word, or select text on a page and use “Look up in MDict”.`;
+    title.textContent = message?.title || 'Ready';
+    text.textContent =
+      message?.note ||
+      `${library.dictionaries.length} ${
+        library.dictionaries.length === 1 ? 'dictionary' : 'dictionaries'
+      }, ${words.toLocaleString()} head words. Type a word, or select text on a page and use “Look up in MDict”.`;
     ui.placeholderAdd.hidden = true;
   }
 }
@@ -252,9 +258,20 @@ async function lookUp(word, { record = true } = {}) {
     return;
   }
   if (!results.length) {
-    const near = library.suggest(text, 30);
-    showSuggestions(near);
-    toast(near.length ? `No exact match for “${text}”` : `“${text}” is not in your dictionaries`);
+    // Leave the word in the search box, ready to be edited: what was selected
+    // on the page is often an inflected form ("mice", "running") of a head
+    // word the dictionary does have.
+    ui.query.value = text;
+    ui.clear.hidden = false;
+    ui.query.focus();
+    ui.query.setSelectionRange(text.length, text.length); // caret at the end
+    showSuggestions(library.suggest(text, 30));
+    updatePlaceholder({
+      title: `No entry for “${text}”`,
+      note: 'The word is in the search box — edit it and press Enter. Dictionaries usually list the base form of a word.',
+    });
+    // With an entry still on screen the placeholder is hidden, so say it here.
+    if (entry.results.length) toast(`No entry for “${text}” — edit it and press Enter`);
     return;
   }
   if (record && entry.word && entry.word !== text) backStack.push(entry.word);

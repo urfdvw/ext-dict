@@ -80,34 +80,58 @@ async function importFixture(page, base) {
   );
 }
 
+/** Whatever the panel is currently telling the user: placeholder or toast. */
+async function notice(page) {
+  const parts = [];
+  if (await page.isVisible('#placeholder')) parts.push(await page.textContent('#placeholder h1'));
+  if (await page.isVisible('#toast')) parts.push(await page.textContent('#toast'));
+  return parts.join(' | ');
+}
+
+function entryFrames(page) {
+  return page.frames().filter((frame) => frame.url().startsWith('about:srcdoc'));
+}
+
 function entryFrame(page) {
   // The newest one: while an entry is being swapped in, the previous
   // document is still attached.
-  return page.frames().filter((frame) => frame.url().startsWith('about:srcdoc')).pop();
+  return entryFrames(page).pop();
 }
 
-/** Wait for the document of the entry currently being rendered. */
-async function waitForEntry(page, contains) {
+/**
+ * Run something that makes the panel show an entry, and return that entry's
+ * document once it has replaced the one that was on screen before.
+ */
+async function afterNavigation(page, action, contains) {
+  const before = new Set(entryFrames(page));
+  await action();
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    const frame = entryFrame(page);
-    if (frame) {
+    const frames = entryFrames(page).filter((frame) => !before.has(frame));
+    // One frame left means the swap is finished and nothing is being replaced.
+    if (frames.length === 1 && entryFrames(page).length === 1) {
+      const frame = frames[0];
       try {
         const text = await frame.textContent('body');
         if (text && (!contains || text.includes(contains))) return frame;
       } catch {
-        /* the frame is still loading */
+        /* still loading, or already replaced */
       }
     }
     await page.waitForTimeout(100);
   }
-  throw new Error(`no entry document${contains ? ` containing “${contains}”` : ''}`);
+  throw new Error(`no new entry document${contains ? ` containing “${contains}”` : ''}`);
 }
 
-async function showEntry(page, word, contains) {
-  await page.fill('#query', word);
-  await page.keyboard.press('Enter');
-  return waitForEntry(page, contains);
+function showEntry(page, word, contains) {
+  return afterNavigation(
+    page,
+    async () => {
+      await page.fill('#query', word);
+      await page.keyboard.press('Enter');
+    },
+    contains
+  );
 }
 
 test('the service worker starts and the panel opens on the library screen', async () => {
@@ -176,13 +200,11 @@ test('links inside an entry scroll to anchors and jump to other head words', asy
   assert.ok(await page.isHidden('#toast'), 'and does not report a failed lookup');
 
   const banana = await showEntry(page, 'banana', 'a long yellow fruit');
-  await banana.click('#cross-link');
-  const jumped = await waitForEntry(page, 'a small red fruit');
+  const jumped = await afterNavigation(page, () => banana.click('#cross-link'), 'a small red fruit');
   assert.match(await jumped.content(), /a small red fruit/, 'entry:// opens the other word');
   assert.equal(await page.inputValue('#query'), 'cherry');
   await page.waitForSelector('#back:not([hidden])');
-  await page.click('#back');
-  await waitForEntry(page, 'a long yellow fruit');
+  await afterNavigation(page, () => page.click('#back'), 'a long yellow fruit');
   assert.equal(await page.inputValue('#query'), 'banana', 'back returns to the previous word');
   assert.deepEqual(problems, []);
   await page.close();
@@ -213,8 +235,12 @@ test('looked-up words are kept in a recent list', async () => {
   const words = await page.$$eval('#suggestions li .word', (n) => n.map((x) => x.textContent));
   assert.deepEqual(words.slice(0, 2), ['date', 'banana'], 'newest first, no duplicates');
 
-  await page.click('#suggestions li:nth-child(3)'); // the header is the first child
-  const reopened = await waitForEntry(page, 'a long yellow fruit');
+  // the header is the first child
+  const reopened = await afterNavigation(
+    page,
+    () => page.click('#suggestions li:nth-child(3)'),
+    'a long yellow fruit'
+  );
   assert.match(await reopened.content(), /a long yellow fruit/);
   assert.equal(await page.inputValue('#query'), 'banana');
 
@@ -232,6 +258,57 @@ test('looked-up words are kept in a recent list', async () => {
   await second.page.close();
 });
 
+test('a word that is missing lands in the search box, ready to be edited', async () => {
+  const { page, problems } = await openPanel();
+  await closeLibrary(page);
+
+  // An inflected form, the way it would arrive from a selection on a page.
+  await page.fill('#query', 'cherries');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.activeElement.id === 'query');
+  assert.match(await notice(page), /No entry for “cherries”/, 'the panel says so');
+  assert.equal(await page.inputValue('#query'), 'cherries', 'the word stays in the box');
+  assert.equal(
+    await page.evaluate(() => document.activeElement.id),
+    'query',
+    'and the box has focus'
+  );
+  assert.deepEqual(
+    await page.$eval('#query', (input) => [input.selectionStart, input.selectionEnd]),
+    [8, 8],
+    'with the caret at the end, so the ending can be trimmed'
+  );
+
+  // Editing the ending finds the head word the dictionary does have.
+  for (let i = 0; i < 3; i++) await page.keyboard.press('Backspace');
+  await page.waitForSelector('#suggestions:not([hidden]) li');
+  assert.deepEqual(
+    await page.$$eval('#suggestions li .word', (n) => n.map((x) => x.textContent)),
+    ['cherry']
+  );
+  const found = await afterNavigation(page, () => page.keyboard.press('Enter'), 'a small red fruit');
+  assert.match(await found.content(), /a small red fruit/);
+  assert.deepEqual(problems, []);
+  await page.close();
+});
+
+test('a missing word from the right-click lookup is editable too', async () => {
+  const { page } = await openPanel();
+  await closeLibrary(page);
+  // What the service worker does when the context menu is used.
+  await page.evaluate(() =>
+    chrome.storage.session.set({ pendingQuery: { text: 'Geese', at: Date.now() } })
+  );
+  await page.waitForFunction(() => document.getElementById('query').value === 'Geese');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'query');
+  assert.deepEqual(
+    await page.$eval('#query', (input) => [input.selectionStart, input.selectionEnd]),
+    [5, 5]
+  );
+  assert.match(await notice(page), /No entry for “Geese”/);
+  await page.close();
+});
+
 test('a second dictionary shows up as its own tab', async () => {
   const { page, problems } = await openPanel();
   await importFixture(page, 'v1-lzo');
@@ -243,8 +320,12 @@ test('a second dictionary shows up as its own tab', async () => {
   const tabs = await page.$$eval('#tabs .tab', (nodes) => nodes.map((n) => n.textContent));
   assert.deepEqual(tabs, ['v2-zlib', 'v1-lzo']);
 
-  await page.click('#tabs .tab:nth-child(2)');
-  assert.match(await (await waitForEntry(page, 'a small red fruit')).content(), /a small red fruit/);
+  const second = await afterNavigation(
+    page,
+    () => page.click('#tabs .tab:nth-child(2)'),
+    'a small red fruit'
+  );
+  assert.match(await second.content(), /a small red fruit/);
   assert.deepEqual(problems, []);
   await page.close();
 });

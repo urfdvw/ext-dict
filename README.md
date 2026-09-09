@@ -21,6 +21,10 @@ panel. Everything is parsed in the browser; nothing is uploaded anywhere.
   word, each gets a tab. The *Dictionaries* screen lists every file that was
   added, so it is clear whether the `.mdd` arrived with its `.mdx`, and
   dictionaries can be switched off without deleting them.
+- **Words that are not there.** A word with no entry is left in the search
+  box with the caret at its end and the box focused, so an inflected form
+  (`cherries`, `running`) can be trimmed back to the head word the
+  dictionary actually lists; suggestions appear as you edit.
 - **Recent lookups.** Words you have looked up are kept in a list that opens
   from the clock button, or whenever the search box is empty.
 - **Cross-references.** `entry://` links jump to another head word,
