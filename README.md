@@ -18,11 +18,17 @@ panel. Everything is parsed in the browser; nothing is uploaded anywhere.
   stylesheets, scripts and sounds stored in the `.mdd` are inlined into the
   entry as it is displayed.
 - **Several dictionaries at once.** When more than one dictionary defines a
-  word, each gets a tab. Dictionaries can be switched off without deleting
-  them.
+  word, each gets a tab. The *Dictionaries* screen lists every file that was
+  added, so it is clear whether the `.mdd` arrived with its `.mdx`, and
+  dictionaries can be switched off without deleting them.
+- **Recent lookups.** Words you have looked up are kept in a list that opens
+  from the clock button, or whenever the search box is empty.
 - **Cross-references.** `entry://` links jump to another head word,
   `@@@LINK=` redirects are followed, `sound://` links play, and ordinary
   links open in a new tab.
+
+The panel is always light, because dictionaries bring their own light
+stylesheets and a dark frame around them reads badly.
 
 Dictionary files are stored in the browser's IndexedDB on your computer and
 are read on demand — only the key index is held in memory, so a large

@@ -19,6 +19,7 @@ const ui = {
   back: el('back'),
   query: el('query'),
   clear: el('clear'),
+  showHistory: el('show-history'),
   openLibrary: el('open-library'),
   tabs: el('tabs'),
   suggestions: el('suggestions'),
@@ -38,19 +39,24 @@ const ui = {
 const hasChromeApis = typeof chrome !== 'undefined' && !!chrome.runtime?.id;
 const library = new Library();
 
-let suggestions = [];
+const HISTORY_LIMIT = 100;
+
+let options = [];
+let optionRows = [];
 let highlighted = -1;
 let entry = { word: '', results: [], active: 0 };
-let history = [];
-let viewerReady = false;
+let backStack = [];
+let recent = [];
 let pendingDocument = null;
-let searchToken = 0;
+let renderSeq = 0;
+let deliverTimer = 0;
 let toastTimer = 0;
 
 /* ------------------------------------------------------------------ boot */
 
 async function start() {
   wireEvents();
+  await loadHistory();
   await reloadLibrary();
   await renderLibraryScreen();
 
@@ -95,55 +101,81 @@ function updatePlaceholder(message) {
 function onQueryInput() {
   const value = ui.query.value;
   ui.clear.hidden = !value;
-  const token = ++searchToken;
   const text = value.trim();
   if (!text) {
-    showSuggestions([]);
+    showHistory();
     return;
   }
-  // Suggestions come from in-memory indexes, but keep the guard in case a
-  // later keystroke wins the race.
-  const found = library.suggest(text);
-  if (token === searchToken) showSuggestions(found);
+  showSuggestions(library.suggest(text));
 }
 
-function showSuggestions(list) {
-  suggestions = list;
-  highlighted = list.length ? 0 : -1;
+/** Draw the dropdown: either head-word matches or the recent words. */
+function renderOptions(items, header) {
+  options = items;
+  optionRows = [];
+  highlighted = items.length ? 0 : -1;
   ui.suggestions.innerHTML = '';
-  if (!list.length) {
-    ui.suggestions.hidden = true;
-    return;
-  }
-  for (const [i, item] of list.entries()) {
-    const li = document.createElement('li');
-    li.setAttribute('role', 'option');
-    li.setAttribute('aria-selected', String(i === highlighted));
+  if (header) ui.suggestions.append(header);
+
+  for (const [i, item] of items.entries()) {
+    const row = document.createElement('li');
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(i === highlighted));
     const word = document.createElement('span');
     word.className = 'word';
     word.textContent = item.word;
-    li.append(word);
-    if (library.dictionaries.length > 1) {
-      const where = document.createElement('span');
-      where.className = 'where';
-      where.textContent = item.dicts.join(' · ');
-      li.append(where);
+    row.append(word);
+    if (item.hint) {
+      const hint = document.createElement('span');
+      hint.className = 'where';
+      hint.textContent = item.hint;
+      row.append(hint);
     }
-    li.addEventListener('mousedown', (event) => {
+    row.addEventListener('mousedown', (event) => {
       event.preventDefault(); // keep focus in the search box
       lookUp(item.word);
     });
-    ui.suggestions.append(li);
+    ui.suggestions.append(row);
+    optionRows.push(row);
   }
-  ui.suggestions.hidden = false;
+  ui.suggestions.hidden = !items.length && !header;
+}
+
+function showSuggestions(list) {
+  const many = library.dictionaries.length > 1;
+  renderOptions(list.map((item) => ({ word: item.word, hint: many ? item.dicts.join(' · ') : '' })));
+}
+
+function showHistory() {
+  if (!recent.length) {
+    renderOptions([]);
+    return;
+  }
+  const header = document.createElement('li');
+  header.className = 'list-header';
+  const label = document.createElement('span');
+  label.textContent = 'Recent';
+  const clear = document.createElement('button');
+  clear.type = 'button';
+  clear.className = 'link-button';
+  clear.textContent = 'Clear';
+  clear.addEventListener('mousedown', (event) => {
+    event.preventDefault();
+    clearHistory();
+  });
+  header.append(label, clear);
+  renderOptions(
+    recent.map((item) => ({ word: item.word, hint: timeAgo(item.at) })),
+    header
+  );
 }
 
 function moveHighlight(delta) {
-  if (!suggestions.length) return;
-  highlighted = (highlighted + delta + suggestions.length) % suggestions.length;
-  for (const [i, li] of [...ui.suggestions.children].entries()) {
-    li.setAttribute('aria-selected', String(i === highlighted));
-    if (i === highlighted) li.scrollIntoView({ block: 'nearest' });
+  if (!options.length) return;
+  highlighted = (highlighted + delta + options.length) % options.length;
+  for (const [i, row] of optionRows.entries()) {
+    row.setAttribute('aria-selected', String(i === highlighted));
+    if (i === highlighted) row.scrollIntoView({ block: 'nearest' });
   }
 }
 
@@ -157,12 +189,50 @@ function onQueryKeyDown(event) {
     moveHighlight(-1);
   } else if (event.key === 'Enter') {
     event.preventDefault();
-    const chosen = highlighted >= 0 ? suggestions[highlighted]?.word : null;
+    const chosen = highlighted >= 0 ? options[highlighted]?.word : null;
     lookUp(chosen || ui.query.value);
   } else if (event.key === 'Escape') {
     if (!ui.suggestions.hidden) ui.suggestions.hidden = true;
     else ui.query.value = '';
   }
+}
+
+/* --------------------------------------------------------------- history */
+
+async function loadHistory() {
+  if (!hasChromeApis || !chrome.storage?.local) return;
+  const { history: stored } = await chrome.storage.local.get('history');
+  if (Array.isArray(stored)) recent = stored;
+}
+
+function saveHistory() {
+  if (hasChromeApis && chrome.storage?.local) {
+    chrome.storage.local.set({ history: recent }).catch(() => {});
+  }
+}
+
+function rememberWord(word) {
+  const folded = word.toLowerCase();
+  recent = [{ word, at: Date.now() }, ...recent.filter((item) => item.word.toLowerCase() !== folded)];
+  recent.length = Math.min(recent.length, HISTORY_LIMIT);
+  saveHistory();
+}
+
+function clearHistory() {
+  recent = [];
+  saveHistory();
+  showHistory();
+  toast('History cleared');
+}
+
+function timeAgo(at) {
+  const minutes = Math.floor((Date.now() - (at || 0)) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.floor(hours / 24);
+  return days < 7 ? `${days} d ago` : new Date(at).toLocaleDateString();
 }
 
 /* ---------------------------------------------------------------- lookup */
@@ -187,8 +257,8 @@ async function lookUp(word, { record = true } = {}) {
     toast(near.length ? `No exact match for “${text}”` : `“${text}” is not in your dictionaries`);
     return;
   }
-  if (record && entry.word && entry.word !== text) history.push(entry.word);
-  ui.back.hidden = history.length === 0;
+  if (record && entry.word && entry.word !== text) backStack.push(entry.word);
+  ui.back.hidden = backStack.length === 0;
   entry = { word: text, results, active: 0 };
   ui.query.value = text;
   ui.clear.hidden = false;
@@ -196,6 +266,7 @@ async function lookUp(word, { record = true } = {}) {
   renderTabs();
   await renderActiveEntry();
   rememberLastWord(text);
+  rememberWord(entry.results[0].word || text);
 }
 
 function renderTabs() {
@@ -238,17 +309,29 @@ async function renderActiveEntry() {
   updatePlaceholder();
 }
 
+/**
+ * Hand a document to the viewer. The frame may still be loading — and its
+ * greeting can arrive before this page is listening — so the document is
+ * resent until the viewer acknowledges it.
+ */
 function sendToViewer(html) {
-  if (!viewerReady) {
-    pendingDocument = html;
-    return;
-  }
-  ui.viewer.contentWindow.postMessage({ source: 'mdict-panel', type: 'render', html }, '*');
+  pendingDocument = { seq: ++renderSeq, html };
+  deliverToViewer();
+}
+
+function deliverToViewer() {
+  clearTimeout(deliverTimer);
+  if (!pendingDocument) return;
+  ui.viewer.contentWindow?.postMessage(
+    { source: 'mdict-panel', type: 'render', seq: pendingDocument.seq, html: pendingDocument.html },
+    '*'
+  );
+  deliverTimer = setTimeout(deliverToViewer, 200);
 }
 
 function goBack() {
-  const previous = history.pop();
-  ui.back.hidden = history.length === 0;
+  const previous = backStack.pop();
+  ui.back.hidden = backStack.length === 0;
   if (previous) lookUp(previous, { record: false });
 }
 
@@ -257,11 +340,11 @@ function goBack() {
 async function onViewerMessage(event) {
   if (event.source !== ui.viewer.contentWindow) return;
   const message = event.data || {};
-  if (message.source === 'mdict-viewer' && message.type === 'ready') {
-    viewerReady = true;
-    if (pendingDocument) {
-      sendToViewer(pendingDocument);
+  if (message.source === 'mdict-viewer') {
+    if (message.type === 'ready') deliverToViewer();
+    if (message.type === 'rendered' && pendingDocument?.seq === message.seq) {
       pendingDocument = null;
+      clearTimeout(deliverTimer);
     }
     return;
   }
@@ -352,24 +435,36 @@ function dictionaryRow(dict) {
 
   const meta = document.createElement('div');
   meta.className = 'dict-meta';
-  const resources = dict.files.filter((f) => f.kind === 'mdd');
-  const size = dict.files.reduce((sum, f) => sum + f.size, 0);
-  meta.textContent = [
-    `${dict.entryCount.toLocaleString()} entries`,
-    resources.length ? `${resources.length} resource file${resources.length > 1 ? 's' : ''}` : null,
-    formatSize(size),
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const size = dict.files.reduce((sum, file) => sum + file.size, 0);
+  meta.textContent = `${dict.entryCount.toLocaleString()} entries · ${formatSize(size)}`;
   main.append(meta);
 
-  const broken = dict.files.filter((f) => f.status === 'error');
-  if (broken.length) {
-    const problem = document.createElement('div');
-    problem.className = 'dict-meta error';
-    problem.textContent = broken.map((f) => `${f.fileName}: ${f.error}`).join(' ');
-    main.append(problem);
+  // Every file of the dictionary is listed, so it is obvious whether the
+  // .mdd made it in alongside the .mdx.
+  const files = document.createElement('ul');
+  files.className = 'dict-files';
+  for (const file of dict.files) {
+    const row = document.createElement('li');
+    row.className = `dict-file ${file.status}`;
+    const mark = document.createElement('span');
+    mark.className = 'dict-file-mark';
+    mark.textContent = { ready: '✓', error: '✕' }[file.status] || '…';
+    const label = document.createElement('span');
+    label.className = 'dict-file-name';
+    label.textContent = file.fileName;
+    const size = document.createElement('span');
+    size.className = 'dict-file-size';
+    size.textContent = formatSize(file.size);
+    row.append(mark, label, size);
+    if (file.status === 'error') {
+      const why = document.createElement('div');
+      why.className = 'dict-file-error';
+      why.textContent = file.error || 'could not be read';
+      row.append(why);
+    }
+    files.append(row);
   }
+  main.append(files);
 
   const actions = document.createElement('div');
   actions.className = 'dict-actions';
@@ -529,8 +624,15 @@ function wireEvents() {
   ui.clear.addEventListener('click', () => {
     ui.query.value = '';
     ui.clear.hidden = true;
-    showSuggestions([]);
     ui.query.focus();
+    showHistory();
+  });
+  ui.showHistory.addEventListener('click', () => {
+    ui.query.value = '';
+    ui.clear.hidden = true;
+    ui.query.focus();
+    showHistory();
+    if (!recent.length) toast('No lookups yet');
   });
   ui.back.addEventListener('click', goBack);
   ui.openLibrary.addEventListener('click', openLibraryScreen);
@@ -553,9 +655,10 @@ function wireEvents() {
   });
 
   document.addEventListener('click', (event) => {
-    if (!ui.suggestions.contains(event.target) && event.target !== ui.query) {
-      ui.suggestions.hidden = true;
-    }
+    // A click anywhere else closes the dropdown — except on the controls
+    // whose whole job is to open it.
+    const keepsOpen = event.target.closest?.('#suggestions, #query, #show-history, #clear');
+    if (!keepsOpen) ui.suggestions.hidden = true;
   });
 
   window.addEventListener('message', onViewerMessage);

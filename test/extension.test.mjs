@@ -81,7 +81,9 @@ async function importFixture(page, base) {
 }
 
 function entryFrame(page) {
-  return page.frames().find((frame) => frame.url().startsWith('about:srcdoc'));
+  // The newest one: while an entry is being swapped in, the previous
+  // document is still attached.
+  return page.frames().filter((frame) => frame.url().startsWith('about:srcdoc')).pop();
 }
 
 /** Wait for the document of the entry currently being rendered. */
@@ -120,9 +122,16 @@ test('importing an .mdx with its .mdd makes words searchable', async () => {
   const { page, problems } = await openPanel();
   await importFixture(page, 'v2-zlib');
   assert.match(await page.textContent('.dict-title'), /Test v2-zlib/, 'the dictionary title is shown');
-  assert.match(
-    await page.textContent('.dict:nth-child(1) .dict-meta:not(.dict-title)'),
-    /11 entries · 1 resource file/
+  assert.match(await page.textContent('.dict:nth-child(1) .dict-meta:not(.dict-title)'), /11 entries/);
+  assert.deepEqual(
+    await page.$$eval('.dict:nth-child(1) .dict-file-name', (n) => n.map((x) => x.textContent)),
+    ['v2-zlib.mdx', 'v2-zlib.mdd'],
+    'both uploaded files are listed'
+  );
+  assert.deepEqual(
+    await page.$$eval('.dict:nth-child(1) .dict-file-mark', (n) => n.map((x) => x.textContent)),
+    ['✓', '✓'],
+    'and both are marked as read'
   );
 
   await closeLibrary(page);
@@ -177,6 +186,50 @@ test('links inside an entry scroll to anchors and jump to other head words', asy
   assert.equal(await page.inputValue('#query'), 'banana', 'back returns to the previous word');
   assert.deepEqual(problems, []);
   await page.close();
+});
+
+test('the panel stays light even when the browser prefers dark', async () => {
+  const { page } = await openPanel();
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await closeLibrary(page);
+  assert.equal(await page.$eval('body', (b) => getComputedStyle(b).backgroundColor), 'rgb(255, 255, 255)');
+  const frame = await showEntry(page, 'apple', 'a round fruit');
+  assert.equal(
+    await frame.$eval('body', (b) => getComputedStyle(b).backgroundColor),
+    'rgb(255, 255, 255)',
+    'and so does the entry, which dictionaries style for a light background'
+  );
+  await page.close();
+});
+
+test('looked-up words are kept in a recent list', async () => {
+  const { page, problems } = await openPanel();
+  await closeLibrary(page);
+  await showEntry(page, 'banana', 'a long yellow fruit');
+  await showEntry(page, 'date', 'a sweet dried fruit');
+
+  await page.click('#show-history');
+  await page.waitForSelector('#suggestions .list-header');
+  const words = await page.$$eval('#suggestions li .word', (n) => n.map((x) => x.textContent));
+  assert.deepEqual(words.slice(0, 2), ['date', 'banana'], 'newest first, no duplicates');
+
+  await page.click('#suggestions li:nth-child(3)'); // the header is the first child
+  const reopened = await waitForEntry(page, 'a long yellow fruit');
+  assert.match(await reopened.content(), /a long yellow fruit/);
+  assert.equal(await page.inputValue('#query'), 'banana');
+
+  // The list survives the panel being closed and opened again.
+  await page.close();
+  const second = await openPanel();
+  await closeLibrary(second.page);
+  await second.page.click('#show-history');
+  await second.page.waitForSelector('#suggestions .list-header');
+  assert.equal(await second.page.textContent('#suggestions li:nth-child(2) .word'), 'banana');
+
+  await second.page.click('#suggestions .list-header .link-button');
+  await second.page.waitForSelector('#suggestions', { state: 'hidden' });
+  assert.deepEqual(problems, []);
+  await second.page.close();
 });
 
 test('a second dictionary shows up as its own tab', async () => {

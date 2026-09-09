@@ -8,6 +8,7 @@
  */
 
 let frame = null;
+let lastSeq = 0;
 
 function render(html) {
   const next = document.createElement('iframe');
@@ -25,7 +26,13 @@ function render(html) {
 window.addEventListener('message', (event) => {
   const message = event.data || {};
   if (message.source === 'mdict-panel' && message.type === 'render') {
-    render(message.html);
+    // The panel keeps resending until one of these acknowledgements gets
+    // through, so ignore a document that has already been drawn.
+    if (message.seq > lastSeq) {
+      lastSeq = message.seq;
+      render(message.html);
+    }
+    parent.postMessage({ source: 'mdict-viewer', type: 'rendered', seq: message.seq }, '*');
     return;
   }
   // Anything the entry document sends goes up to the panel.

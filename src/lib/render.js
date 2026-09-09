@@ -57,7 +57,7 @@ function isLocalReference(url) {
 }
 
 const BASE_STYLE = `
-  html { -webkit-text-size-adjust: 100%; }
+  html { -webkit-text-size-adjust: 100%; color-scheme: light; }
   body { margin: 0; padding: 12px 14px 32px; background: #fff; color: #16181d;
          font: 15px/1.6 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
          overflow-wrap: break-word; }
@@ -65,11 +65,6 @@ const BASE_STYLE = `
   table { max-width: 100%; }
   a { color: #1a63d8; }
   hr.mdict-homograph-rule { border: 0; border-top: 1px dashed #c9ced8; margin: 18px 0; }
-  @media (prefers-color-scheme: dark) {
-    body { background: #1c1e22; color: #e6e8ec; }
-    a { color: #7fb0ff; }
-    hr.mdict-homograph-rule { border-top-color: #3a3f4a; }
-  }
 `;
 
 // Runs inside the entry document; forwards navigation to the panel.
