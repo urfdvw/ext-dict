@@ -45,6 +45,8 @@ let toastTimer = 0;
 /* ------------------------------------------------------------------ boot */
 
 async function start() {
+  // The web app runs in a browser tab, which is much wider than a panel.
+  document.documentElement.classList.toggle('web-app', !isExtension);
   mountPanel(ui);
   // The viewer page sits next to this module, wherever the panel is hosted.
   // Outside the extension it needs the sandbox that the extension manifest

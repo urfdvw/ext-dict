@@ -25,7 +25,9 @@ export class MDictError extends Error {}
 export const INDEX_FORMAT = 1;
 
 const textDecoders = new Map();
-function decodeWith(encoding, bytes) {
+
+/** Decode bytes with a cached TextDecoder. */
+export function decodeWith(encoding, bytes) {
   let dec = textDecoders.get(encoding);
   if (!dec) {
     dec = new TextDecoder(encoding, { fatal: false });

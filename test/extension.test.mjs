@@ -1,6 +1,8 @@
 /**
- * End-to-end test: loads the unpacked extension in Chromium, imports the
- * fixture dictionaries through the real UI and checks what the panel shows.
+ * End-to-end test for the extension: loads it unpacked in Chromium, imports
+ * the fixture dictionaries through the real UI and checks what the panel
+ * shows. The helpers that drive the panel are shared with the web app's
+ * suite in ./panel.mjs.
  *
  * Needs Playwright (`npm install`). Set CHROMIUM_PATH to use a Chromium that
  * Playwright did not download itself.
@@ -9,19 +11,27 @@
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const root = dirname(here);
-const fixtures = join(here, 'fixtures');
+import {
+  afterNavigation,
+  closeLibrary,
+  entryFrame,
+  fixtures,
+  importFixture,
+  launchOptions,
+  loadPlaywright,
+  notice,
+  openLibrary,
+  repoRoot,
+  showEntry,
+  watchForProblems,
+} from './panel.mjs';
 
-let chromium;
-try {
-  ({ chromium } = await import('playwright'));
-} catch {
+const chromium = await loadPlaywright();
+if (!chromium) {
   console.log('# skipped: install Playwright to run the end-to-end test');
   process.exit(0);
 }
@@ -33,9 +43,8 @@ let extensionId;
 before(async () => {
   userDataDir = await mkdtemp(join(tmpdir(), 'mdict-e2e-'));
   context = await chromium.launchPersistentContext(userDataDir, {
-    executablePath: process.env.CHROMIUM_PATH || undefined,
-    headless: true,
-    args: [`--disable-extensions-except=${root}`, `--load-extension=${root}`],
+    ...launchOptions(),
+    args: [`--disable-extensions-except=${repoRoot}`, `--load-extension=${repoRoot}`],
   });
   const worker = context.serviceWorkers()[0] || (await context.waitForEvent('serviceworker'));
   extensionId = new URL(worker.url()).host;
@@ -46,92 +55,13 @@ after(async () => {
   if (userDataDir) await rm(userDataDir, { recursive: true, force: true });
 });
 
+/** Open the extension's side panel page in a tab. */
 async function openPanel() {
   const page = await context.newPage();
-  const problems = [];
-  page.on('console', (message) => {
-    if (message.type() === 'error') problems.push(message.text());
-  });
-  page.on('pageerror', (error) => problems.push(String(error)));
+  const problems = watchForProblems(page);
   await page.goto(`chrome-extension://${extensionId}/src/sidepanel.html`);
+  await page.waitForSelector('#query');
   return { page, problems };
-}
-
-async function openLibrary(page) {
-  if (await page.isHidden('#library')) await page.click('#open-library');
-  await page.waitForSelector('#library', { state: 'visible' });
-}
-
-async function closeLibrary(page) {
-  if (await page.isVisible('#library')) await page.click('#close-library');
-  await page.waitForSelector('#library', { state: 'hidden' });
-}
-
-async function importFixture(page, base) {
-  await openLibrary(page);
-  await page.setInputFiles('#files', [
-    join(fixtures, `${base}.mdx`),
-    join(fixtures, `${base}.mdd`),
-  ]);
-  await page.waitForFunction(
-    (name) => [...document.querySelectorAll('.dict-name')].some((n) => n.textContent === name),
-    base,
-    { timeout: 30000 }
-  );
-}
-
-/** Whatever the panel is currently telling the user: placeholder or toast. */
-async function notice(page) {
-  const parts = [];
-  if (await page.isVisible('#placeholder')) parts.push(await page.textContent('#placeholder h1'));
-  if (await page.isVisible('#toast')) parts.push(await page.textContent('#toast'));
-  return parts.join(' | ');
-}
-
-function entryFrames(page) {
-  return page.frames().filter((frame) => frame.url().startsWith('about:srcdoc'));
-}
-
-function entryFrame(page) {
-  // The newest one: while an entry is being swapped in, the previous
-  // document is still attached.
-  return entryFrames(page).pop();
-}
-
-/**
- * Run something that makes the panel show an entry, and return that entry's
- * document once it has replaced the one that was on screen before.
- */
-async function afterNavigation(page, action, contains) {
-  const before = new Set(entryFrames(page));
-  await action();
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    const frames = entryFrames(page).filter((frame) => !before.has(frame));
-    // One frame left means the swap is finished and nothing is being replaced.
-    if (frames.length === 1 && entryFrames(page).length === 1) {
-      const frame = frames[0];
-      try {
-        const text = await frame.textContent('body');
-        if (text && (!contains || text.includes(contains))) return frame;
-      } catch {
-        /* still loading, or already replaced */
-      }
-    }
-    await page.waitForTimeout(100);
-  }
-  throw new Error(`no new entry document${contains ? ` containing “${contains}”` : ''}`);
-}
-
-function showEntry(page, word, contains) {
-  return afterNavigation(
-    page,
-    async () => {
-      await page.fill('#query', word);
-      await page.keyboard.press('Enter');
-    },
-    contains
-  );
 }
 
 test('the service worker starts and the panel opens on the library screen', async () => {

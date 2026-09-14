@@ -30,6 +30,7 @@ const SHELL = [
   './icons/icon32.png',
   './icons/icon192.png',
   './icons/icon512.png',
+  './icons/icon-maskable.png',
 ];
 
 self.addEventListener('install', (event) => {

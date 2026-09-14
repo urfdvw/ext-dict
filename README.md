@@ -118,12 +118,22 @@ src/lib/ripemd128.js   key derivation for scrambled key indexes
 src/lib/render.js      inlines .mdd resources into an entry document
 src/lib/library.js     import, metadata, and lookups across dictionaries
 src/lib/storage.js     IndexedDB wrapper
+test/panel.mjs         test helpers shared by both browser suites
 ```
 
 The panel is one piece of code with two hosts. `src/lib/shell.js` holds its
 markup and `src/lib/platform.js` holds everything that differs between them
 — where small settings are kept, how an outside link is opened, and how a
 word asked for elsewhere arrives — so neither copy can drift from the other.
+Everything either host adds of its own is small: `src/app.js` registers the
+service worker, `src/background.js` runs the context menu, and `sw.js`
+decides what to cache.
+
+The tests follow the same shape: `test/panel.mjs` drives the panel and both
+browser suites use it, so a change to the UI is exercised twice without
+being written twice. One of its tests reads `sw.js` and checks the precache
+list against the files the app actually ships, which is what keeps the
+offline build honest when a new module is added.
 
 Entry markup is never inserted into the panel itself. It is rendered inside a
 sandboxed extension page (opaque origin, no extension APIs), which in turn

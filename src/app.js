@@ -6,9 +6,7 @@
  * already local, in IndexedDB.
  */
 
-document.documentElement.classList.add('web-app');
-
-import('./sidepanel.js');
+import './sidepanel.js';
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {

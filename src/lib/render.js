@@ -4,6 +4,8 @@
  * in the .mdd archives are inlined, and links are handed to the panel.
  */
 
+import { decodeWith } from './mdict.js';
+
 const MIME_TYPES = {
   css: 'text/css',
   js: 'text/javascript',
@@ -31,10 +33,10 @@ const MIME_TYPES = {
 
 /** Decode a text resource, honouring a byte-order mark when there is one. */
 export function decodeText(bytes) {
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le').decode(bytes.subarray(2));
-  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return decodeWith('utf-16le', bytes.subarray(2));
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return decodeWith('utf-16be', bytes.subarray(2));
   if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) bytes = bytes.subarray(3);
-  return new TextDecoder('utf-8').decode(bytes);
+  return decodeWith('utf-8', bytes);
 }
 
 export function mimeFor(path) {
