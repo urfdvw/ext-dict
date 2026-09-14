@@ -3,6 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <title>Entry</title>
+    <!--
+      Host page for dictionary entries.
+
+      The extension declares this page sandboxed in its manifest and the web
+      app sandboxes the iframe, so entry markup — which often carries its own
+      scripts for tabs and collapsible sections — runs with an opaque origin
+      and no access to extension APIs. Each entry gets a fresh nested
+      document so one dictionary's CSS cannot leak into the next.
+    -->
     <style>
       html,
       body {
@@ -26,6 +35,46 @@
     </style>
   </head>
   <body>
-    <script src="viewer.js"></script>
+    <!-- Inline on purpose: this page is sandboxed, so it has an opaque
+         origin and is not controlled by the web app's service worker. A
+         separate script file would be fetched from the network and would
+         fail when offline. -->
+    <script>
+      let frame = null;
+      let lastSeq = 0;
+
+      function render(html) {
+        const next = document.createElement('iframe');
+        next.setAttribute('srcdoc', html);
+        next.addEventListener('load', () => {
+          // Keep the previous entry on screen until this one has painted.
+          for (const old of document.querySelectorAll('iframe')) {
+            if (old !== next) old.remove();
+          }
+          frame = next;
+        });
+        document.body.appendChild(next);
+      }
+
+      window.addEventListener('message', (event) => {
+        const message = event.data || {};
+        if (message.source === 'mdict-panel' && message.type === 'render') {
+          // The panel keeps resending until one of these acknowledgements gets
+          // through, so ignore a document that has already been drawn.
+          if (message.seq > lastSeq) {
+            lastSeq = message.seq;
+            render(message.html);
+          }
+          parent.postMessage({ source: 'mdict-viewer', type: 'rendered', seq: message.seq }, '*');
+          return;
+        }
+        // Anything the entry document sends goes up to the panel.
+        if (message.source === 'mdict-entry') {
+          parent.postMessage(message, '*');
+        }
+      });
+
+      parent.postMessage({ source: 'mdict-viewer', type: 'ready' }, '*');
+    </script>
   </body>
 </html>

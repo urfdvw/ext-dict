@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>MDict</title>
+    <meta
+      name="description"
+      content="Look up words in your own MDict dictionaries. Everything stays in your browser."
+    />
+    <link rel="manifest" href="./app.webmanifest" />
+    <meta name="theme-color" content="#1a63d8" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="MDict" />
+    <link rel="icon" href="./icons/icon32.png" sizes="32x32" />
+    <link rel="icon" href="./icons/icon192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="./icons/icon192.png" />
+    <link rel="stylesheet" href="./src/sidepanel.css" />
+  </head>
+  <body>
+    <!-- The panel is mounted by src/lib/shell.js — the same markup the
+         extension's side panel uses. -->
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

@@ -1,6 +1,9 @@
 /**
- * The side panel: search box, suggestion list, entry viewer and the
- * dictionary library screen.
+ * The dictionary panel: search box, suggestion list, entry viewer and the
+ * library screen.
+ *
+ * The same code runs in the extension's side panel and in the hosted web
+ * app; everything that differs between the two is behind lib/platform.js.
  */
 
 import {
@@ -11,32 +14,19 @@ import {
   listDictionaries,
   setEnabled,
 } from './lib/library.js';
+import {
+  isExtension,
+  onLookupRequest,
+  openExternal,
+  session,
+  store,
+  takeLookupRequest,
+} from './lib/platform.js';
 import { buildEntryDocument } from './lib/render.js';
+import { mountPanel } from './lib/shell.js';
 import { usage } from './lib/storage.js';
 
-const el = (id) => document.getElementById(id);
-const ui = {
-  back: el('back'),
-  query: el('query'),
-  clear: el('clear'),
-  showHistory: el('show-history'),
-  openLibrary: el('open-library'),
-  tabs: el('tabs'),
-  suggestions: el('suggestions'),
-  placeholder: el('placeholder'),
-  placeholderAdd: el('placeholder-add'),
-  viewer: el('viewer'),
-  library: el('library'),
-  closeLibrary: el('close-library'),
-  dropzone: el('dropzone'),
-  files: el('files'),
-  imports: el('imports'),
-  dictList: el('dict-list'),
-  storageNote: el('storage-note'),
-  toast: el('toast'),
-};
-
-const hasChromeApis = typeof chrome !== 'undefined' && !!chrome.runtime?.id;
+const ui = {};
 const library = new Library();
 
 const HISTORY_LIMIT = 100;
@@ -55,14 +45,22 @@ let toastTimer = 0;
 /* ------------------------------------------------------------------ boot */
 
 async function start() {
+  mountPanel(ui);
+  // The viewer page sits next to this module, wherever the panel is hosted.
+  // Outside the extension it needs the sandbox that the extension manifest
+  // declares for it.
+  if (!isExtension) ui.viewer.setAttribute('sandbox', 'allow-scripts allow-popups allow-modals');
+  ui.viewer.src = new URL('./viewer.html', import.meta.url).href;
+
   wireEvents();
+  onLookupRequest((word) => lookUp(word));
   await loadHistory();
   await reloadLibrary();
   await renderLibraryScreen();
 
-  const pending = await takePendingQuery();
-  if (pending) {
-    lookUp(pending);
+  const asked = (await takeLookupRequest()) || (await session.get('lastWord')) || '';
+  if (asked) {
+    lookUp(asked);
   } else if (library.isEmpty) {
     openLibraryScreen();
   } else {
@@ -206,15 +204,12 @@ function onQueryKeyDown(event) {
 /* --------------------------------------------------------------- history */
 
 async function loadHistory() {
-  if (!hasChromeApis || !chrome.storage?.local) return;
-  const { history: stored } = await chrome.storage.local.get('history');
+  const stored = await store.get('history');
   if (Array.isArray(stored)) recent = stored;
 }
 
 function saveHistory() {
-  if (hasChromeApis && chrome.storage?.local) {
-    chrome.storage.local.set({ history: recent }).catch(() => {});
-  }
+  store.set('history', recent);
 }
 
 function rememberWord(word) {
@@ -375,7 +370,7 @@ async function onViewerMessage(event) {
 
   const href = String(message.href || '');
   if (/^https?:/i.test(href)) {
-    if (hasChromeApis) chrome.tabs.create({ url: href });
+    openExternal(href);
     return;
   }
   if (/^sound:\/\//i.test(href) || /\.(mp3|ogg|wav|m4a|spx)$/i.test(href)) {
@@ -618,20 +613,8 @@ function toast(message) {
   }, 2600);
 }
 
-async function takePendingQuery() {
-  if (!hasChromeApis || !chrome.storage?.session) return '';
-  const { pendingQuery, lastWord } = await chrome.storage.session.get(['pendingQuery', 'lastWord']);
-  if (pendingQuery?.text) {
-    await chrome.storage.session.remove('pendingQuery');
-    return pendingQuery.text;
-  }
-  return lastWord || '';
-}
-
 function rememberLastWord(word) {
-  if (hasChromeApis && chrome.storage?.session) {
-    chrome.storage.session.set({ lastWord: word }).catch(() => {});
-  }
+  session.set('lastWord', word);
 }
 
 function wireEvents() {
@@ -679,20 +662,6 @@ function wireEvents() {
   });
 
   window.addEventListener('message', onViewerMessage);
-
-  if (hasChromeApis) {
-    chrome.runtime.onMessage.addListener((message) => {
-      if (message?.type === 'lookup' && message.text) lookUp(message.text);
-    });
-    // The panel can finish loading either before or after the word that
-    // opened it is parked in session storage, so watch for both.
-    chrome.storage.session.onChanged?.addListener((changes) => {
-      const text = changes.pendingQuery?.newValue?.text;
-      if (!text) return;
-      chrome.storage.session.remove('pendingQuery');
-      lookUp(text);
-    });
-  }
 }
 
 start();

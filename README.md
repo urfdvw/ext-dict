@@ -1,8 +1,15 @@
 # MDict Side Panel
 
-A Chrome extension that looks words up in your own MDict dictionaries — the
-`.mdx` files (and their `.mdd` resource archives) — from the browser side
-panel. Everything is parsed in the browser; nothing is uploaded anywhere.
+Look words up in your own MDict dictionaries — the `.mdx` files and their
+`.mdd` resource archives — in the browser. Everything is parsed locally;
+nothing is uploaded anywhere.
+
+It comes in two forms that share all of their code:
+
+- a **Chrome extension** that puts the dictionary in the browser side panel,
+  with a right-click lookup for selected text;
+- a **web app** you can host on GitHub Pages, installable to a desktop or
+  phone home screen and usable offline.
 
 ![the extension icon](icons/icon48.png)
 
@@ -38,7 +45,7 @@ Dictionary files are stored in the browser's IndexedDB on your computer and
 are read on demand — only the key index is held in memory, so a large
 dictionary does not have to be loaded in full to be searched.
 
-## Install
+## Install the extension
 
 The extension is not packaged for the Chrome Web Store; load it unpacked:
 
@@ -50,6 +57,32 @@ The extension is not packaged for the Chrome Web Store; load it unpacked:
    screen.
 
 Chrome 116 or newer is required for the side panel API.
+
+## Host the web app
+
+The repository root is the web app, so GitHub Pages can serve it as it is:
+
+1. Push this repository to GitHub.
+2. Open **Settings → Pages**, and under *Build and deployment* choose
+   **Deploy from a branch**, branch `main`, folder `/ (root)`.
+3. Open the address Pages gives you — `https://<user>.github.io/<repo>/`.
+
+Every path in the app is relative, so it works under a project path without
+configuration. Browsers offer to install it (Chrome's address-bar install
+button, or *Add to Home Screen* on a phone); once installed it opens in its
+own window and works with no network at all — the app shell is precached by
+a service worker and the dictionaries already live in the browser.
+
+A word can be handed to the app in the address bar as
+`https://<user>.github.io/<repo>/?q=serendipity`, which is enough for a
+bookmarklet or a phone shortcut.
+
+Dictionaries are stored per browser profile and per origin: the extension
+and the hosted app each keep their own copy, and adding a dictionary to one
+does not add it to the other.
+
+To try it locally, `npm run serve` and open <http://localhost:8000/> —
+service workers are allowed on localhost.
 
 ## Supported files
 
@@ -68,9 +101,16 @@ failing silently.
 
 ```
 manifest.json          MV3 manifest: side panel, context menu, sandboxed viewer
-src/background.js      service worker: context menu + opening the panel
-src/sidepanel.*        the panel: search, suggestions, tabs, library screen
-src/viewer.html|js     sandboxed page that hosts entry markup
+src/background.js      extension service worker: context menu, opening the panel
+index.html             the web app's page
+app.webmanifest        web app manifest: name, icons, standalone display
+sw.js                  web app service worker: precached shell, offline
+src/app.js             web app entry point
+src/sidepanel.html|js  the panel: search, suggestions, tabs, library screen
+src/sidepanel.css      one stylesheet for both
+src/lib/shell.js       the panel markup both pages mount
+src/lib/platform.js    the few differences between extension and web app
+src/viewer.html        sandboxed page that hosts entry markup
 src/worker/indexer.js  builds a dictionary's index off the main thread
 src/lib/mdict.js       MDict container parser and random-access reader
 src/lib/lzo1x.js       LZO1X decompressor for older dictionaries
@@ -80,6 +120,11 @@ src/lib/library.js     import, metadata, and lookups across dictionaries
 src/lib/storage.js     IndexedDB wrapper
 ```
 
+The panel is one piece of code with two hosts. `src/lib/shell.js` holds its
+markup and `src/lib/platform.js` holds everything that differs between them
+— where small settings are kept, how an outside link is opened, and how a
+word asked for elsewhere arrives — so neither copy can drift from the other.
+
 Entry markup is never inserted into the panel itself. It is rendered inside a
 sandboxed extension page (opaque origin, no extension APIs), which in turn
 hosts one throwaway document per entry, so a dictionary's scripts and styles
@@ -88,9 +133,12 @@ cannot reach the panel or leak into the next entry.
 ## Development
 
 ```sh
-npm test                       # parser tests, no browser needed
+npm test                         # parser tests, no browser needed
 npm install && npm run test:e2e  # drives the real extension in Chromium
-npm run fixtures               # regenerate test/fixtures (needs python3)
+npm run test:pwa                 # serves the repo and drives the web app,
+                                 # including a reload with the network off
+npm run serve                    # http://localhost:8000/ for hand testing
+npm run fixtures                 # regenerate test/fixtures (needs python3)
 ```
 
 `test/fixtures/*.md[xd]` are small dictionaries written by
